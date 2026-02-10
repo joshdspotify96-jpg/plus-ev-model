@@ -21,19 +21,34 @@ app = Flask(__name__)
 CORS(app)
 logger = logging.getLogger(__name__)
 
-# Initialize clients
-api_key = os.getenv('ODDS_API_KEY')
-if not api_key:
-    raise ValueError("ODDS_API_KEY environment variable not set")
+# Lazy-initialized clients (avoids startup timeout on Railway/Render)
+_odds_client: Optional[OddsAPIClient] = None
+_edge_finder: Optional[PropEdgeFinder] = None
 
-odds_client = OddsAPIClient(api_key=api_key)
 
-# Initialize edge finder with model training
-logger.info("Initializing edge finder and training models...")
-edge_finder = PropEdgeFinder(
-    api_key=api_key,
-    force_retrain=True  # Force retrain models
-)
+def _get_api_key() -> str:
+    api_key = os.getenv('ODDS_API_KEY')
+    if not api_key:
+        raise ValueError("ODDS_API_KEY environment variable not set")
+    return api_key
+
+
+def get_odds_client() -> OddsAPIClient:
+    global _odds_client
+    if _odds_client is None:
+        _odds_client = OddsAPIClient(api_key=_get_api_key())
+    return _odds_client
+
+
+def get_edge_finder() -> PropEdgeFinder:
+    global _edge_finder
+    if _edge_finder is None:
+        logger.info("Initializing edge finder and training models...")
+        _edge_finder = PropEdgeFinder(
+            api_key=_get_api_key(),
+            force_retrain=True
+        )
+    return _edge_finder
 
 def format_odds(odds: int) -> str:
     """Format American odds for display."""
@@ -56,7 +71,7 @@ def get_props_data(
     Returns:
         List of prop dictionaries
     """
-    props = odds_client.get_player_props(game_id, [f'player_{prop_type}'])
+    props = get_odds_client().get_player_props(game_id, [f'player_{prop_type}'])
     if not props or 'bookmakers' not in props:
         return []
         
@@ -91,7 +106,7 @@ def api_health() -> Response:
 def api_games() -> Response:
     """API endpoint for NBA games list."""
     try:
-        games = odds_client.get_nba_games()
+        games = get_odds_client().get_nba_games()
         formatted = []
         for g in games:
             formatted.append({
@@ -115,7 +130,7 @@ def api_games() -> Response:
 def index() -> ResponseReturnValue:
     """Render main page."""
     try:
-        games = odds_client.get_nba_games()
+        games = get_odds_client().get_nba_games()
         return cast(ResponseReturnValue, render_template(
             'index.html',
             games=games,
@@ -129,7 +144,7 @@ def index() -> ResponseReturnValue:
 def props(game_id: str) -> ResponseReturnValue:
     """Render props page for a game."""
     try:
-        games = odds_client.get_nba_games()
+        games = get_odds_client().get_nba_games()
         game = next((g for g in games if g['id'] == game_id), None)
         if not game:
             return cast(ResponseReturnValue, render_template('error.html', error="Game not found"))
@@ -179,7 +194,7 @@ def api_edges() -> Response:
     """API endpoint for prop edges."""
     try:
         min_edge = float(request.args.get('min_edge', '5.0'))
-        edges_df = edge_finder.find_edges()
+        edges_df = get_edge_finder().find_edges()
         
         if edges_df.empty:
             return cast(Response, jsonify({
@@ -227,7 +242,7 @@ def api_best_odds(game_id: str, player_name: str) -> Response:
     """API endpoint for best odds."""
     try:
         prop_type = request.args.get('type', 'points')
-        odds = odds_client.get_best_odds(game_id, player_name, prop_type)
+        odds = get_odds_client().get_best_odds(game_id, player_name, prop_type)
         return cast(Response, jsonify({
             'success': True,
             'odds': odds

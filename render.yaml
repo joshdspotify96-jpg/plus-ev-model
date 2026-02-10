@@ -1,0 +1,13 @@
+services:
+  - type: web
+    name: plus-ev-api
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /api/health
+    envVars:
+      - key: ODDS_API_KEY
+        sync: false
+      - key: MOTHERDUCK_TOKEN
+        sync: false
+      - key: PORT
+        value: 8000

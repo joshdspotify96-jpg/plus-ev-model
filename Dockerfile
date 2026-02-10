@@ -4,7 +4,7 @@ WORKDIR /app
 
 # Install system dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    build-essential \
+    build-essential curl \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy requirements first for layer caching
@@ -18,6 +18,11 @@ COPY models/ models/
 COPY wsgi.py .
 COPY .env* ./
 
-EXPOSE 8000
+# Railway/Render inject PORT; default to 8000
+ENV PORT=8000
+EXPOSE ${PORT}
 
-CMD ["gunicorn", "--bind", "0.0.0.0:8000", "--workers", "2", "--timeout", "120", "wsgi:app"]
+HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
+    CMD curl -f http://localhost:${PORT}/api/health || exit 1
+
+CMD gunicorn --bind 0.0.0.0:${PORT} --workers 2 --timeout 120 wsgi:app
