@@ -6,6 +6,7 @@ from typing import Dict, Any, List, Optional, cast, Union, TypedDict
 from datetime import datetime
 from flask import Flask, render_template, jsonify, request, Response
 from flask.typing import ResponseReturnValue
+from flask_cors import CORS
 from src.data.odds_api_client import (
     OddsAPIClient,
     GameDict,
@@ -17,6 +18,7 @@ from src.data.odds_api_client import (
 from src.models.find_prop_edges import PropEdgeFinder
 
 app = Flask(__name__)
+CORS(app)
 logger = logging.getLogger(__name__)
 
 # Initialize clients
@@ -76,6 +78,38 @@ def get_props_data(
     # Sort by player name and line
     rows.sort(key=lambda x: (x['player'], x['line']))
     return rows
+
+@app.route('/api/health')
+def api_health() -> Response:
+    """Health check endpoint."""
+    return cast(Response, jsonify({
+        'status': 'ok',
+        'timestamp': datetime.now().isoformat()
+    }))
+
+@app.route('/api/games')
+def api_games() -> Response:
+    """API endpoint for NBA games list."""
+    try:
+        games = odds_client.get_nba_games()
+        formatted = []
+        for g in games:
+            formatted.append({
+                'id': g['id'],
+                'home_team': g['home_team'],
+                'away_team': g['away_team'],
+                'commence_time': g.get('commence_time', ''),
+            })
+        return cast(Response, jsonify({
+            'success': True,
+            'games': formatted
+        }))
+    except Exception as e:
+        logger.error(f"Error fetching games: {str(e)}")
+        return cast(Response, jsonify({
+            'success': False,
+            'error': str(e)
+        }))
 
 @app.route('/')
 def index() -> ResponseReturnValue:

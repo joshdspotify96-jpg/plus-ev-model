@@ -1,0 +1,12 @@
+__pycache__
+*.pyc
+.git
+.gitignore
+mobile/
+node_modules/
+tests/
+docs/
+examples/
+*.md
+.mypy_cache/
+.pytest_cache/
